@@ -1,0 +1,37 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+// 👤 MODELO DE USUARIO (Para el Login)
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String   // Aquí guardaremos la contraseña encriptada
+  name      String?
+  tasks     Task[]   // Un usuario tiene muchas tareas
+  createdAt DateTime @default(now())
+}
+
+// 📝 MODELO DE TAREA (Privada)
+model Task {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  isCompleted Boolean  @default(false)
+  
+  // Relación: Esta tarea PERTENECE a un Usuario
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  status      String   @default("pending")
+}

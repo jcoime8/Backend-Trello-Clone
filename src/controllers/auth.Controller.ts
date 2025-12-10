@@ -4,18 +4,20 @@ import bcrypt from "bcryptjs";
 import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
-const JWT_key = process.env.SECRET_KEY
+const JWT_key = process.env.SECRET_KEY;
 
+// Determinar si estamos en producción (Render) para ajustar las cookies
+const isProduction = process.env.NODE_ENV === 'production';
 
-export const registerUser = async(req:Request, res:Response) => {
-    
-    const {email, password, name} = req.body;
+export const registerUser = async (req: Request, res: Response) => {
+
+    const { email, password, name } = req.body;
     try {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = await prisma.user.create({
-            data:{
+            data: {
                 email: email,
                 password: hashedPassword,
                 name: name
@@ -30,63 +32,84 @@ export const registerUser = async(req:Request, res:Response) => {
     } catch (error) {
 
         if ((error as any).code === 'P2002') {
-            res.status(400).json({ error: "El correo ya está registrado, intenta con otro." });
-            return;
+            // Agregado 'return'
+            return res.status(400).json({ error: "El correo ya está registrado, intenta con otro." });
         }
-
-        res.status(500).json({message: "Internal server error", error});
+        // Agregado 'return'
+        return res.status(500).json({ message: "Internal server error", error });
     }
 }
 
 
-export const LoginUser = async(req:Request, res:Response) => {
-    const {email, password} = req.body;
+export const LoginUser = async (req: Request, res: Response) => {
+    const { email, password } = req.body;
 
     try {
-        const user = await prisma.user.findUnique({where:{email}})
-        if(!user){
-            res.status(404).json({
+        const user = await prisma.user.findUnique({ where: { email } })
+        
+        if (!user) {
+            // CORRECCIÓN IMPORTANTE: Agregado 'return' para detener la ejecución aquí
+            return res.status(404).json({
                 error: "Usuario no encontrado"
             })
         }
 
-        const contraseña = await bcrypt.compare(password, user?.password!)
-        if(!contraseña){
-            res.status(401).json({
+        const contraseña = await bcrypt.compare(password, user.password) // user.password ya es seguro de acceder aquí
+        
+        if (!contraseña) {
+            // CORRECCIÓN IMPORTANTE: Agregado 'return'
+            return res.status(401).json({
                 error: "Error contraseña incorrecta"
             })
         }
 
         const token = jwt.sign({
-            userId: user?.id},
+            userId: user.id
+        },
             JWT_key!,
-            {expiresIn: "1h"}
+            { expiresIn: "1h" }
         )
 
+        // CONFIGURACIÓN PARA RENDER (HTTPS)
         res.cookie('token', token, {
             httpOnly: true,
-            sameSite: 'lax',
+            // 'none' es obligatorio si back y front están en dominios distintos (o puerto distinto)
+            sameSite:'none', 
+            // 'true' es obligatorio si usas sameSite: 'none'
+            secure:  true, 
             maxAge: 3600000
         })
+        
+        /* NOTA: Si sigues teniendo problemas en desarrollo, prueba forzar:
+           sameSite: 'none',
+           secure: true 
+           (Pero asegúrate de acceder a tu frontend y backend vía HTTPS o que el navegador lo tolere).
+        */
 
-        res.json({
+        return res.json({
             message: "Login Exitoso",
             user: {
-                id: user?.id,
-                email: user?.email,
-                name: user?.name
+                id: user.id,
+                email: user.email,
+                name: user.name
             }
         })
 
     } catch (e) {
-        res.status(500).json({
-            error:"Error al inicio de seccion", e
+        return res.status(500).json({
+            error: "Error al inicio de sesión", e
         })
     }
 }
 
 
 export const Logout = (req: Request, res: Response) => {
-    res.clearCookie('token'); 
-    res.json({ message: "Sesión cerrada exitosamente" });
+    // Para borrar la cookie correctamente, debes pasar las mismas opciones que usaste al crearla
+    res.clearCookie('token', {
+        httpOnly: true,
+        sameSite: isProduction ? 'none' : 'lax',
+        secure: isProduction ? true : false,
+    });
+    
+    return res.json({ message: "Sesión cerrada exitosamente" });
 };
